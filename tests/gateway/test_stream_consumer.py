@@ -107,6 +107,16 @@ class TestCleanForDisplay:
         assert "Internal data still streaming" not in result
         assert result.strip() == "Visible intro"
 
+    def test_legacy_honcho_heading_stripped(self):
+        """Older markdown-style Honcho context headings are stripped in streaming too."""
+        text = "Visible intro\n## Honcho Context\nInternal data\n## Next Section\nVisible outro"
+        result = GatewayStreamConsumer._clean_for_display(text)
+        assert "## Honcho Context" not in result
+        assert "Internal data" not in result
+        assert "Visible intro" in result
+        assert "## Next Section" in result
+        assert "Visible outro" in result
+
     def test_no_honcho_context_passthrough(self):
         """Text without honcho-context passes through unchanged."""
         text = "Normal response with no internal markers."

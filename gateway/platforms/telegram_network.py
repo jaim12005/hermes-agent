@@ -220,12 +220,23 @@ async def discover_fallback_ips() -> list[str]:
         logger.debug("Discovered Telegram fallback IPs via DoH: %s", ", ".join(validated))
         return validated
 
+    # Filter seed IPs against system DNS — a seed that matches the primary
+    # resolver is useless as a fallback and just adds noise.
+    seed_candidates = [ip for ip in _SEED_FALLBACK_IPS if ip not in system_ips]
+    if not seed_candidates:
+        logger.info(
+            "DoH discovery yielded no new IPs and seed IPs match system DNS (%s); "
+            "no fallback IPs needed",
+            ", ".join(system_ips) or "unknown",
+        )
+        return []
+
     logger.info(
         "DoH discovery yielded no new IPs (system DNS: %s); using seed fallback IPs %s",
         ", ".join(system_ips) or "unknown",
-        ", ".join(_SEED_FALLBACK_IPS),
+        ", ".join(seed_candidates),
     )
-    return list(_SEED_FALLBACK_IPS)
+    return seed_candidates
 
 
 def _rewrite_request_for_ip(request: httpx.Request, ip: str) -> httpx.Request:

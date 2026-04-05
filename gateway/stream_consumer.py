@@ -168,6 +168,9 @@ class GatewayStreamConsumer:
     # never surface raw Honcho context to the user.
     _HONCHO_CTX_RE = re.compile(r'<honcho-context>[\s\S]*?(?:</honcho-context>|$)')
 
+    # Legacy heading format from older prefetch — strip in streaming too.
+    _HONCHO_HEADING_RE = re.compile(r'## Honcho Context\n[\s\S]*?(?=\n## |\Z)')
+
     @staticmethod
     def _clean_for_display(text: str) -> str:
         """Strip MEDIA: directives and internal markers from text before display.
@@ -183,12 +186,14 @@ class GatewayStreamConsumer:
             "MEDIA:" in text
             or "[[audio_as_voice]]" in text
             or "<honcho-context>" in text
+            or "## Honcho Context" in text
         )
         if not needs_clean:
             return text
         cleaned = text.replace("[[audio_as_voice]]", "")
         cleaned = GatewayStreamConsumer._MEDIA_RE.sub("", cleaned)
         cleaned = GatewayStreamConsumer._HONCHO_CTX_RE.sub("", cleaned)
+        cleaned = GatewayStreamConsumer._HONCHO_HEADING_RE.sub("", cleaned)
         # Collapse excessive blank lines left behind by removed tags
         cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
         # Strip trailing whitespace/newlines but preserve leading content

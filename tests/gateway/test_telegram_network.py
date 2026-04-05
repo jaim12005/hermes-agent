@@ -599,6 +599,17 @@ class TestDiscoverFallbackIps:
         assert ips == tnet._SEED_FALLBACK_IPS
 
     @pytest.mark.asyncio
+    async def test_seed_ips_matching_system_dns_return_empty(self, monkeypatch):
+        """If seed fallbacks are identical to system DNS, don't advertise fake fallbacks."""
+        self._patch_doh(monkeypatch, {
+            "https://dns.google": (200, _doh_answer("149.154.167.220")),
+            "https://cloudflare-dns.com": (200, _doh_answer("149.154.167.220")),
+        }, system_dns_ips=["149.154.167.220"])
+
+        ips = await tnet.discover_fallback_ips()
+        assert ips == []
+
+    @pytest.mark.asyncio
     async def test_cloudflare_gets_accept_header(self, monkeypatch):
         client = self._patch_doh(monkeypatch, {
             "https://dns.google": (200, _doh_answer("149.154.167.220")),
