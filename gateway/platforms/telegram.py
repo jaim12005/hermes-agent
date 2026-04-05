@@ -947,13 +947,21 @@ class TelegramAdapter(BasePlatformAdapter):
                         self.name, retry_err,
                     )
                     return SendResult(success=False, error=str(retry_err))
-            logger.error(
-                "[%s] Failed to edit Telegram message %s: %s",
-                self.name,
-                message_id,
-                e,
-                exc_info=True,
-            )
+            # Timeout-related edit failures are expected when the Telegram
+            # API is unreachable (network blip, DNS failure, fallback IP
+            # exhaustion).  The streaming fallback handles these gracefully
+            # so log at WARNING without a traceback to reduce noise.
+            err_is_timeout = "timed out" in err_str or "connect" in err_str
+            if err_is_timeout:
+                logger.warning(
+                    "[%s] Failed to edit Telegram message %s: %s",
+                    self.name, message_id, e,
+                )
+            else:
+                logger.error(
+                    "[%s] Failed to edit Telegram message %s: %s",
+                    self.name, message_id, e, exc_info=True,
+                )
             return SendResult(success=False, error=str(e))
 
     async def send_update_prompt(

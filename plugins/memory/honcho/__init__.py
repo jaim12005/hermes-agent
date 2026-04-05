@@ -15,6 +15,7 @@ Config: Uses the existing Honcho config chain:
 
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import logging
 import threading
@@ -486,7 +487,7 @@ class HonchoMemoryProvider(MemoryProvider):
         # ----- Port #3265: token budget enforcement -----
         result = self._truncate_to_budget(result)
 
-        return f"## Honcho Context\n{result}"
+        return f"<honcho-context>\n{result}\n</honcho-context>"
 
     def _truncate_to_budget(self, text: str) -> str:
         """Truncate text to fit within context_tokens budget if set."""
@@ -657,9 +658,20 @@ class HonchoMemoryProvider(MemoryProvider):
                 if not query:
                     return json.dumps({"error": "Missing required parameter: query"})
                 peer = args.get("peer", "user")
-                result = self._manager.dialectic_query(
-                    self._session_key, query, peer=peer
-                )
+                # Cap the blocking dialectic call to 30s so a slow/hung
+                # Honcho backend doesn't eat the entire agent timeout.
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    future = pool.submit(
+                        self._manager.dialectic_query,
+                        self._session_key, query, peer=peer,
+                    )
+                    try:
+                        result = future.result(timeout=30)
+                    except concurrent.futures.TimeoutError:
+                        logger.warning("Honcho dialectic query timed out after 30s")
+                        return json.dumps({
+                            "error": "Honcho query timed out. Try honcho_search for faster results."
+                        })
                 return json.dumps({"result": result or "No result from Honcho."})
 
             elif tool_name == "honcho_conclude":

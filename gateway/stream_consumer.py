@@ -162,6 +162,10 @@ class GatewayStreamConsumer:
     # gateway/platforms/base.py for post-processing.
     _MEDIA_RE = re.compile(r'''[`"']?MEDIA:\s*\S+[`"']?''')
 
+    # Pattern to strip <honcho-context>...</honcho-context> blocks that the
+    # model may have echoed from the injected user message context.
+    _HONCHO_CTX_RE = re.compile(r'<honcho-context>[\s\S]*?</honcho-context>')
+
     @staticmethod
     def _clean_for_display(text: str) -> str:
         """Strip MEDIA: directives and internal markers from text before display.
@@ -173,10 +177,16 @@ class GatewayStreamConsumer:
         stream finishes — we just need to hide the raw directives from the
         user.
         """
-        if "MEDIA:" not in text and "[[audio_as_voice]]" not in text:
+        needs_clean = (
+            "MEDIA:" in text
+            or "[[audio_as_voice]]" in text
+            or "<honcho-context>" in text
+        )
+        if not needs_clean:
             return text
         cleaned = text.replace("[[audio_as_voice]]", "")
         cleaned = GatewayStreamConsumer._MEDIA_RE.sub("", cleaned)
+        cleaned = GatewayStreamConsumer._HONCHO_CTX_RE.sub("", cleaned)
         # Collapse excessive blank lines left behind by removed tags
         cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
         # Strip trailing whitespace/newlines but preserve leading content

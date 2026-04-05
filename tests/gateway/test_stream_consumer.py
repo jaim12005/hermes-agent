@@ -84,6 +84,26 @@ class TestCleanForDisplay:
         # But "media:" is lowercase so won't match either
         assert result == text
 
+    def test_honcho_context_block_stripped(self):
+        """<honcho-context> blocks echoed by the model are stripped."""
+        text = "Here is your answer.\n<honcho-context>\nSome internal context\n</honcho-context>\nMore text."
+        result = GatewayStreamConsumer._clean_for_display(text)
+        assert "<honcho-context>" not in result
+        assert "Some internal context" not in result
+        assert "Here is your answer." in result
+        assert "More text." in result
+
+    def test_honcho_context_only_response(self):
+        """Response that is entirely a honcho-context block returns empty."""
+        text = "<honcho-context>\nInternal data only\n</honcho-context>"
+        result = GatewayStreamConsumer._clean_for_display(text)
+        assert result.strip() == ""
+
+    def test_no_honcho_context_passthrough(self):
+        """Text without honcho-context passes through unchanged."""
+        text = "Normal response with no internal markers."
+        assert GatewayStreamConsumer._clean_for_display(text) == text
+
 
 # ── Integration: _send_or_edit strips MEDIA: ─────────────────────────────
 

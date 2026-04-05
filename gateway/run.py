@@ -6545,6 +6545,19 @@ class GatewayRunner:
                         unique_tags.insert(0, "[[audio_as_voice]]")
                     final_response = final_response + "\n" + "\n".join(unique_tags)
             
+            # Strip <honcho-context> blocks the model may have echoed from
+            # injected memory context.  These are internal-only markers that
+            # should never reach the user.  Also strip legacy "## Honcho Context"
+            # headings from older prefetch format.
+            if "<honcho-context>" in final_response:
+                final_response = re.sub(
+                    r'<honcho-context>[\s\S]*?</honcho-context>', '', final_response
+                ).strip()
+            if final_response.startswith("## Honcho Context"):
+                final_response = re.sub(
+                    r'^## Honcho Context\n[\s\S]*?(?=\n## |\Z)', '', final_response
+                ).strip()
+
             # Sync session_id: the agent may have created a new session during
             # mid-run context compression (_compress_context splits sessions).
             # If so, update the session store entry so the NEXT message loads
