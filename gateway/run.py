@@ -6551,7 +6551,7 @@ class GatewayRunner:
             # headings from older prefetch format.
             if "<honcho-context>" in final_response:
                 final_response = re.sub(
-                    r'<honcho-context>[\s\S]*?</honcho-context>', '', final_response
+                    r'<honcho-context>[\s\S]*?(?:</honcho-context>|$)', '', final_response
                 ).strip()
             if final_response.startswith("## Honcho Context"):
                 final_response = re.sub(

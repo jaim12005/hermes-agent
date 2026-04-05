@@ -99,6 +99,14 @@ class TestCleanForDisplay:
         result = GatewayStreamConsumer._clean_for_display(text)
         assert result.strip() == ""
 
+    def test_unterminated_honcho_context_block_stripped(self):
+        """Partial/unterminated honcho-context blocks are stripped too."""
+        text = "Visible intro\n<honcho-context>\nInternal data still streaming"
+        result = GatewayStreamConsumer._clean_for_display(text)
+        assert "<honcho-context>" not in result
+        assert "Internal data still streaming" not in result
+        assert result.strip() == "Visible intro"
+
     def test_no_honcho_context_passthrough(self):
         """Text without honcho-context passes through unchanged."""
         text = "Normal response with no internal markers."

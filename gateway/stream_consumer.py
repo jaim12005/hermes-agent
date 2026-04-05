@@ -164,7 +164,9 @@ class GatewayStreamConsumer:
 
     # Pattern to strip <honcho-context>...</honcho-context> blocks that the
     # model may have echoed from the injected user message context.
-    _HONCHO_CTX_RE = re.compile(r'<honcho-context>[\s\S]*?</honcho-context>')
+    # Treat an unterminated block as internal too so partial streaming chunks
+    # never surface raw Honcho context to the user.
+    _HONCHO_CTX_RE = re.compile(r'<honcho-context>[\s\S]*?(?:</honcho-context>|$)')
 
     @staticmethod
     def _clean_for_display(text: str) -> str:
