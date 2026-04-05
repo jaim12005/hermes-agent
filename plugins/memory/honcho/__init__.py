@@ -338,11 +338,15 @@ class HonchoMemoryProvider(MemoryProvider):
             logger.debug("Honcho memory file migration skipped: %s", e)
 
         # ----- B7: Pre-warming context at init -----
+        # Only pre-warm structured context (representations, peer cards).
+        # Dialectic prefetch removed: the generic "What should I know about
+        # this user?" query returned overly broad cross-project summaries
+        # that contaminated prompts with stale/unrelated context.  The model
+        # can still call honcho_context explicitly when it needs synthesis.
         if self._recall_mode in ("context", "hybrid"):
             try:
                 self._manager.prefetch_context(self._session_key)
-                self._manager.prefetch_dialectic(self._session_key, "What should I know about this user?")
-                logger.debug("Honcho pre-warm threads started for session: %s", self._session_key)
+                logger.debug("Honcho pre-warm context started for session: %s", self._session_key)
             except Exception as e:
                 logger.debug("Honcho pre-warm failed: %s", e)
 
@@ -448,7 +452,7 @@ class HonchoMemoryProvider(MemoryProvider):
         else:  # hybrid
             header = (
                 "# Honcho Memory\n"
-                "Active (hybrid mode). Relevant context is auto-injected AND memory tools are available. "
+                "Active (hybrid mode). Structured user context is auto-injected AND memory tools are available. "
                 "Use honcho_profile for a quick factual snapshot, "
                 "honcho_search for raw excerpts, honcho_context for synthesized answers, "
                 "honcho_conclude to save facts about the user."
@@ -459,35 +463,15 @@ class HonchoMemoryProvider(MemoryProvider):
         return header
 
     def prefetch(self, query: str, *, session_id: str = "") -> str:
-        """Return prefetched dialectic context from background thread.
+        """Return prefetched context for injection.
 
-        B1: Returns empty when recall_mode is "tools" (no injection).
-        B5: Respects injection_frequency — "first-turn" returns cached/empty after turn 0.
-        Port #3265: Truncates to context_tokens budget.
+        Dialectic auto-injection disabled: previously wrapped raw dialectic
+        results in <honcho-context> tags, which leaked stale cross-session
+        summaries.  Structured context (representations, peer cards) is
+        delivered via system_prompt_block() instead.  The model can use
+        honcho_context tool for on-demand dialectic synthesis.
         """
-        if self._cron_skipped:
-            return ""
-
-        # B1: tools-only mode — no auto-injection
-        if self._recall_mode == "tools":
-            return ""
-
-        # B5: injection_frequency — if "first-turn" and past first turn, return empty
-        if self._injection_frequency == "first-turn" and self._turn_count > 0:
-            return ""
-
-        if self._prefetch_thread and self._prefetch_thread.is_alive():
-            self._prefetch_thread.join(timeout=3.0)
-        with self._prefetch_lock:
-            result = self._prefetch_result
-            self._prefetch_result = ""
-        if not result:
-            return ""
-
-        # ----- Port #3265: token budget enforcement -----
-        result = self._truncate_to_budget(result)
-
-        return f"<honcho-context>\n{result}\n</honcho-context>"
+        return ""
 
     def _truncate_to_budget(self, text: str) -> str:
         """Truncate text to fit within context_tokens budget if set."""
@@ -504,7 +488,12 @@ class HonchoMemoryProvider(MemoryProvider):
         return truncated + " …"
 
     def queue_prefetch(self, query: str, *, session_id: str = "") -> None:
-        """Fire a background dialectic query for the upcoming turn.
+        """Refresh structured context (representations/cards) for the next turn.
+
+        Dialectic auto-injection removed: raw dialectic results contained
+        overly broad cross-session summaries that leaked stale project
+        context into prompts.  The model can still call honcho_context
+        explicitly when it needs LLM-synthesized answers from Honcho.
 
         B5: Checks cadence before firing background threads.
         """
@@ -517,32 +506,7 @@ class HonchoMemoryProvider(MemoryProvider):
         if self._recall_mode == "tools":
             return
 
-        # B5: cadence check — skip if too soon since last dialectic call
-        if self._dialectic_cadence > 1:
-            if (self._turn_count - self._last_dialectic_turn) < self._dialectic_cadence:
-                logger.debug("Honcho dialectic prefetch skipped: cadence %d, turns since last: %d",
-                             self._dialectic_cadence, self._turn_count - self._last_dialectic_turn)
-                return
-
-        self._last_dialectic_turn = self._turn_count
-
-        def _run():
-            try:
-                result = self._manager.dialectic_query(
-                    self._session_key, query, peer="user"
-                )
-                if result and result.strip():
-                    with self._prefetch_lock:
-                        self._prefetch_result = result
-            except Exception as e:
-                logger.debug("Honcho prefetch failed: %s", e)
-
-        self._prefetch_thread = threading.Thread(
-            target=_run, daemon=True, name="honcho-prefetch"
-        )
-        self._prefetch_thread.start()
-
-        # Also fire context prefetch if cadence allows
+        # Refresh structured context (representations, peer cards) if cadence allows
         if self._context_cadence <= 1 or (self._turn_count - self._last_context_turn) >= self._context_cadence:
             self._last_context_turn = self._turn_count
             try:
