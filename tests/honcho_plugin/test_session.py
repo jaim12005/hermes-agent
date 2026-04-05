@@ -155,6 +155,59 @@ class TestFormatMigrationTranscript:
 
 
 # ---------------------------------------------------------------------------
+# HonchoSessionManager._user_context_perspective / _ai_context_perspective
+# ---------------------------------------------------------------------------
+
+
+class TestContextPerspective:
+    """Verify that peer_perspective resolves correctly per observation_mode."""
+
+    def _make_session(self):
+        return HonchoSession(
+            key="test",
+            user_peer_id="balaxxe",
+            assistant_peer_id="hermes-mac-mini",
+            honcho_session_id="test-session",
+        )
+
+    def test_unified_user_perspective_is_self(self):
+        """In unified mode, user context uses the user's own perspective (self-observation)."""
+        mgr = HonchoSessionManager()
+        mgr._observation_mode = "unified"
+        session = self._make_session()
+        assert mgr._user_context_perspective(session) == "balaxxe"
+
+    def test_unified_ai_perspective_is_self(self):
+        """In unified mode, AI context uses the AI's own perspective."""
+        mgr = HonchoSessionManager()
+        mgr._observation_mode = "unified"
+        session = self._make_session()
+        assert mgr._ai_context_perspective(session) == "hermes-mac-mini"
+
+    def test_directional_user_perspective_is_ai(self):
+        """In directional mode, user context uses the AI peer's perspective (AI observes user)."""
+        mgr = HonchoSessionManager()
+        mgr._observation_mode = "directional"
+        session = self._make_session()
+        assert mgr._user_context_perspective(session) == "hermes-mac-mini"
+
+    def test_directional_ai_perspective_is_user(self):
+        """In directional mode, AI context uses the user peer's perspective (user observes AI)."""
+        mgr = HonchoSessionManager()
+        mgr._observation_mode = "directional"
+        session = self._make_session()
+        assert mgr._ai_context_perspective(session) == "balaxxe"
+
+    def test_default_observation_mode_is_unified(self):
+        """Default observation mode should be unified."""
+        mgr = HonchoSessionManager()
+        assert mgr._observation_mode == "unified"
+        session = self._make_session()
+        # So default user perspective is self
+        assert mgr._user_context_perspective(session) == "balaxxe"
+
+
+# ---------------------------------------------------------------------------
 # HonchoSessionManager.delete / list_sessions
 # ---------------------------------------------------------------------------
 

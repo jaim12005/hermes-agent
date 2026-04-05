@@ -597,6 +597,26 @@ class HonchoSessionManager:
         with self._prefetch_cache_lock:
             return self._context_cache.pop(session_key, {})
 
+    def _user_context_perspective(self, session: HonchoSession) -> str:
+        """Return the correct peer_perspective for user context queries.
+
+        Unified mode: user self-observes → perspective is the user peer.
+        Directional mode: AI peer observes the user → perspective is the AI peer.
+        """
+        if self._observation_mode == "directional":
+            return session.assistant_peer_id
+        return session.user_peer_id
+
+    def _ai_context_perspective(self, session: HonchoSession) -> str:
+        """Return the correct peer_perspective for AI context queries.
+
+        Unified mode: AI self-observes (usually empty) → perspective is the AI peer.
+        Directional mode: user observes the AI → perspective is the user peer.
+        """
+        if self._observation_mode == "directional":
+            return session.user_peer_id
+        return session.assistant_peer_id
+
     def get_prefetch_context(self, session_key: str, user_message: str | None = None) -> dict[str, str]:
         """
         Pre-fetch user and AI peer context from Honcho.
@@ -628,7 +648,7 @@ class HonchoSessionManager:
                 summary=False,
                 tokens=self._context_tokens,
                 peer_target=session.user_peer_id,
-                peer_perspective=session.assistant_peer_id,
+                peer_perspective=self._user_context_perspective(session),
             )
             card = ctx.peer_card or []
             result["representation"] = ctx.peer_representation or ""
@@ -642,7 +662,7 @@ class HonchoSessionManager:
                 summary=False,
                 tokens=self._context_tokens,
                 peer_target=session.assistant_peer_id,
-                peer_perspective=session.user_peer_id,
+                peer_perspective=self._ai_context_perspective(session),
             )
             ai_card = ai_ctx.peer_card or []
             result["ai_representation"] = ai_ctx.peer_representation or ""
@@ -844,7 +864,7 @@ class HonchoSessionManager:
                 summary=False,
                 tokens=200,
                 peer_target=session.user_peer_id,
-                peer_perspective=session.assistant_peer_id,
+                peer_perspective=self._user_context_perspective(session),
             )
             card = ctx.peer_card or []
             return card if isinstance(card, list) else [str(card)]
@@ -881,7 +901,7 @@ class HonchoSessionManager:
                 summary=False,
                 tokens=max_tokens,
                 peer_target=session.user_peer_id,
-                peer_perspective=session.assistant_peer_id,
+                peer_perspective=self._user_context_perspective(session),
                 search_query=query,
             )
             parts = []

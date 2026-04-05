@@ -467,6 +467,84 @@ class TestProfileScopedConfig:
         assert config.peer_name == "dreamer-user"
 
 
+class TestAiPeerHostBlockResolution:
+    """Verify that aiPeer in the host block is respected by SOUL.md sync."""
+
+    def test_host_block_ai_peer_not_overridden_by_soul_md(self, tmp_path):
+        """When aiPeer is set in the host block, SOUL.md heading should NOT override it.
+
+        Regression test: the old check (cfg.raw.get("aiPeer")) only looked at the
+        config root, so hosts.hermes.aiPeer was invisible and SOUL.md always won.
+        """
+        from plugins.memory.honcho import HonchoMemoryProvider
+
+        config_file = tmp_path / "honcho.json"
+        config_file.write_text(json.dumps({
+            "baseUrl": "http://127.0.0.1:18000",
+            "hosts": {
+                "hermes": {
+                    "enabled": True,
+                    "workspace": "test-ws",
+                    "peerName": "alice",
+                    "aiPeer": "my-ai-peer",
+                }
+            }
+        }))
+
+        soul_file = tmp_path / "SOUL.md"
+        soul_file.write_text("# Wrong Agent Name\n\nShould not override config.\n")
+
+        with patch("plugins.memory.honcho.client.resolve_config_path", return_value=config_file), \
+             patch("plugins.memory.honcho.client.resolve_active_host", return_value="hermes"):
+            cfg = HonchoClientConfig.from_global_config(config_path=config_file)
+            assert cfg.ai_peer == "my-ai-peer"
+
+            # Simulate the SOUL.md sync path from HonchoMemoryProvider.initialize
+            host_block = cfg.raw.get("hosts", {}).get(cfg.host, {})
+            has_explicit_ai_peer = host_block.get("aiPeer") or cfg.raw.get("aiPeer")
+            # Should detect the host block aiPeer and skip override
+            assert has_explicit_ai_peer == "my-ai-peer"
+
+    def test_soul_md_override_when_no_explicit_ai_peer(self, tmp_path):
+        """When NO aiPeer is set anywhere, SOUL.md heading SHOULD set ai_peer."""
+        config_file = tmp_path / "honcho.json"
+        config_file.write_text(json.dumps({
+            "baseUrl": "http://127.0.0.1:18000",
+            "hosts": {
+                "hermes": {
+                    "enabled": True,
+                    "workspace": "test-ws",
+                    "peerName": "alice",
+                    # No aiPeer!
+                }
+            }
+        }))
+
+        cfg = HonchoClientConfig.from_global_config(config_path=config_file)
+        # ai_peer defaults to the host key
+        assert cfg.ai_peer == "hermes"
+
+        host_block = cfg.raw.get("hosts", {}).get(cfg.host, {})
+        has_explicit_ai_peer = host_block.get("aiPeer") or cfg.raw.get("aiPeer")
+        # Should be falsy, allowing SOUL.md override
+        assert not has_explicit_ai_peer
+
+    def test_root_level_ai_peer_also_blocks_soul_override(self, tmp_path):
+        """aiPeer at config root (not in host block) should also prevent SOUL.md override."""
+        config_file = tmp_path / "config.json"
+        config_file.write_text(json.dumps({
+            "baseUrl": "http://127.0.0.1:18000",
+            "aiPeer": "root-ai-peer",
+        }))
+
+        cfg = HonchoClientConfig.from_global_config(config_path=config_file)
+        assert cfg.ai_peer == "root-ai-peer"
+
+        host_block = cfg.raw.get("hosts", {}).get(cfg.host, {})
+        has_explicit_ai_peer = host_block.get("aiPeer") or cfg.raw.get("aiPeer")
+        assert has_explicit_ai_peer == "root-ai-peer"
+
+
 class TestResetHonchoClient:
     def test_reset_clears_singleton(self):
         import plugins.memory.honcho.client as mod

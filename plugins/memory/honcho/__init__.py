@@ -236,7 +236,13 @@ class HonchoMemoryProvider(MemoryProvider):
             # ----- Port #1969: aiPeer sync from SOUL.md -----
             try:
                 hermes_home = kwargs.get("hermes_home", "")
-                if hermes_home and not cfg.raw.get("aiPeer"):
+                # Only override ai_peer from SOUL.md when no explicit aiPeer was
+                # set in EITHER the host block or the config root.  The previous
+                # check (cfg.raw.get("aiPeer")) only looked at the root, missing
+                # the host block — which is where the live config sets it.
+                host_block = cfg.raw.get("hosts", {}).get(cfg.host, {})
+                has_explicit_ai_peer = host_block.get("aiPeer") or cfg.raw.get("aiPeer")
+                if hermes_home and not has_explicit_ai_peer:
                     soul_path = Path(hermes_home) / "SOUL.md"
                     if soul_path.exists():
                         soul_text = soul_path.read_text(encoding="utf-8").strip()
